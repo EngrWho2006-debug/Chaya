@@ -1,5 +1,6 @@
 def run(code):
     variables = {}
+    functions = {}
 
     lines = code.split("\n")
     i = 0
@@ -8,6 +9,11 @@ def run(code):
         line = lines[i].strip()
 
         if line == "":
+            i += 1
+            continue
+
+        # Comments
+        if line.startswith("#"):
             i += 1
             continue
 
@@ -25,8 +31,19 @@ def run(code):
             var_name = parts[0].replace("keep", "").strip()
             value = parts[1].strip()
 
-            if value.isdigit():
+            if value.startswith("[") and value.endswith("]"):
+                items = value[1:-1].split(",")
+
+                value = []
+
+                for item in items:
+                    value.append(item.strip())
+
+            elif value.isdigit():
                 value = int(value)
+
+            else:
+                value = str(value)
 
             variables[var_name] = value
 
@@ -131,6 +148,137 @@ def run(code):
 
                     i += 1
 
+
+        # -------------------
+        # repeat
+        # -------------------
+        elif line.startswith("repeat"):
+            count = int(line.replace("repeat", "").strip())
+
+            loop_lines = []
+
+            i += 1
+
+            while i < len(lines) and lines[i].strip() != "done":
+                loop_lines.append(lines[i].strip())
+                i += 1
+
+            for _ in range(count):
+                for loop_line in loop_lines:
+                    if loop_line.startswith("say"):
+                        text = loop_line[4:].strip()
+
+                        if text in variables:
+                            print(variables[text])
+                        else:
+                            print(text)
+
+        # -------------------
+        # brew
+        # -------------------
+        elif line.startswith("brew"):
+            func_name = line.replace("brew", "").strip()
+
+            function_lines = []
+
+            i += 1
+
+            while i < len(lines):
+                current = lines[i].strip()
+
+                if current == "done":
+                    break
+
+                function_lines.append(current)
+                i += 1
+
+            functions[func_name] = function_lines
+
+
+        # -------------------
+        # serve
+        # ------------------- 
+
+        elif line.startswith("serve"):
+            func_name = line.replace("serve", "").strip()
+
+            if func_name in functions:
+
+                for func_line in functions[func_name]:
+
+                    if func_line.startswith("say"):
+                        text = func_line[4:].strip()
+
+                        if "+" in text:
+                            left, right = text.split("+", 1)
+
+                            left = left.strip()
+                            right = right.strip()
+
+                            if left.startswith('"') and left.endswith('"'):
+                                left = left[1:-1]
+                            elif left in variables:
+                                left = variables[left]
+
+                            if right.startswith('"') and right.endswith('"'):
+                                right = right[1:-1]
+                            elif right in variables:
+                                right = variables[right]
+
+                            print(str(left) + str(right))
+
+                        elif text.startswith('"') and text.endswith('"'):
+                            print(text[1:-1])
+
+                        elif text in variables:
+                            print(variables[text])
+
+                        else:
+                            print(text)
+
+
+        # -------------------
+        # add
+        # -------------------
+        
+        elif line.startswith("add"):
+
+            parts = line.split(" to ")
+
+            item = parts[0].replace("add", "").strip()
+            list_name = parts[1].strip()
+
+            if list_name in variables:
+                variables[list_name].append(item) 
+
+        # -------------------
+        # remove
+        # -------------------
+
+        elif line.startswith("remove"):
+
+            parts = line.split(" from ")
+
+            item = parts[0].replace("remove", "").strip()
+            list_name = parts[1].strip()
+
+            if list_name in variables:
+                if item in variables[list_name]:
+                    variables[list_name].remove(item)
+
+
+        # -------------------
+        # size
+        # -------------------
+
+        elif line.startswith("size"):
+            list_name = line.replace("size", "").strip()
+
+            if list_name in variables:
+                print(len(variables[list_name]))
+
+
+        
         # -------------------
         # say
         # -------------------
@@ -139,6 +287,7 @@ def run(code):
 
             try:
 
+                # Power
                 if "**" in text:
                     left, right = text.split("**")
 
@@ -147,6 +296,7 @@ def run(code):
 
                     print(int(left) ** int(right))
 
+                # Modulus
                 elif "%" in text:
                     left, right = text.split("%")
 
@@ -155,14 +305,32 @@ def run(code):
 
                     print(int(left) % int(right))
 
+                # Addition
                 elif "+" in text:
-                    left, right = text.split("+")
+                    left, right = text.split("+", 1)
 
-                    left = variables.get(left.strip(), left.strip())
-                    right = variables.get(right.strip(), right.strip())
+                    left = left.strip()
+                    right = right.strip()
 
-                    print(int(left) + int(right))
+                    # Remove quotes if present
+                    if left.startswith('"') and left.endswith('"'):
+                        left = left[1:-1]
+                    elif left in variables:
+                        left = variables[left]
 
+                    if right.startswith('"') and right.endswith('"'):
+                        right = right[1:-1]
+                    elif right in variables:
+                        right = variables[right]
+
+                    # String concatenation if either side is text
+                    if isinstance(left, str) or isinstance(right, str):
+                        print(str(left) + str(right))
+                    else:
+                        print(int(left) + int(right))
+
+
+                # Subtraction
                 elif "-" in text:
                     left, right = text.split("-")
 
@@ -171,6 +339,7 @@ def run(code):
 
                     print(int(left) - int(right))
 
+                # Multiplication
                 elif "*" in text:
                     left, right = text.split("*")
 
@@ -179,6 +348,7 @@ def run(code):
 
                     print(int(left) * int(right))
 
+                # Division
                 elif "/" in text:
                     left, right = text.split("/")
 
@@ -190,11 +360,32 @@ def run(code):
                     else:
                         print(int(left) / int(right))
 
+                # String Literal
+                elif text.startswith('"') and text.endswith('"'):
+                    print(text[1:-1])
+
+                # List Indexing
+                elif "[" in text and "]" in text:
+
+                    list_name = text.split("[")[0].strip()
+
+                    index = int(
+                        text.split("[")[1]
+                        .replace("]", "")
+                    )
+
+                    if list_name in variables:
+                        print(variables[list_name][index])
+
+
+                # Variable
                 elif text in variables:
                     print(variables[text])
 
+                # Plain Text
                 else:
                     print(text)
+            
 
             except Exception as e:
                 print("TeaLang Error:", e)
