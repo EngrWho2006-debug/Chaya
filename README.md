@@ -218,6 +218,7 @@ v1.3
 
 ---
 
+<<<<<<< HEAD
 License
 
 MIT License
@@ -225,3 +226,12 @@ MIT License
 ---
 
 Created by Pragya Singh
+=======
+Author
+
+Pragya Singh
+
+---
+
+Created by Pragya Singh
+>>>>>>> 4cc89aeebe3a89742a72274c1a562270e905e648
