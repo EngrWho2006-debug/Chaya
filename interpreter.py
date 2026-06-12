@@ -24,7 +24,7 @@ def run(code):
             parts = line.split(" as ")
 
             if len(parts) != 2:
-                print("TeaLang Error: Invalid keep syntax")
+                print("Chaya Error: Invalid keep syntax")
                 i += 1
                 continue
 
@@ -356,7 +356,7 @@ def run(code):
                     right = variables.get(right.strip(), right.strip())
 
                     if int(right) == 0:
-                        print("TeaLang Error: Division by zero")
+                        print("Chaya Error: Division by zero")
                     else:
                         print(int(left) / int(right))
 
@@ -388,6 +388,6 @@ def run(code):
             
 
             except Exception as e:
-                print("TeaLang Error:", e)
+                print("Chaya Error:", e)
 
         i += 1

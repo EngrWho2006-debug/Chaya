@@ -1,4 +1,4 @@
-# TeaLang
+# Chaya
 A beginner - friendly programming language built in Python which is easier than Python.
 
 ## Features
@@ -22,7 +22,7 @@ Output:
 
 ## Version
 
-TeaLang v1.0
+Chaya v1.0
 
 ## Author and Creator
 
