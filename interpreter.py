@@ -278,6 +278,28 @@ def run(code):
                 print(len(variables[list_name]))
 
 
+        # -------------------
+        # reflect
+        # -------------------
+
+        elif line.startswith("reflect"):
+
+            var_name = line.replace("reflect", "").strip()
+
+            if var_name in variables:
+
+                value = variables[var_name]
+
+                print("Reflection")
+                print("name =", var_name)
+                print("value =", value)
+                print("type =", type(value).__name__)
+
+            else:
+                print("Chaya Reflection Error:")
+                print("Variable not found")        
+
+
         
         # -------------------
         # say

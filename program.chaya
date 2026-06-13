@@ -1,5 +1,5 @@
-keep fruits as [Apple, Mango]
-add Banana to fruits
-say fruits
-say fruits[1]
-size fruits
+keep name as Pragya
+keep age as 20
+
+reflect name
+reflect age
