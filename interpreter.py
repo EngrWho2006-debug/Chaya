@@ -1,6 +1,15 @@
+from pydoc import text
+
+
 def run(code):
     variables = {}
+    shadow_variables = {}
+    shadow_count = 0
     functions = {}
+
+    current_scope = "main"
+    last_scope = "main"
+
 
     lines = code.split("\n")
     i = 0
@@ -46,6 +55,34 @@ def run(code):
                 value = str(value)
 
             variables[var_name] = value
+
+
+        # -------------------
+        # shadow
+        # -------------------
+
+        elif line.startswith("shadow"):
+
+            parts = line.split(" as ")
+
+            if len(parts) != 2:
+                print("Chaya Reflection Error:")
+                print("Invalid shadow syntax")
+
+                i += 1
+                continue
+
+            var_name = parts[0].replace("shadow", "").strip()
+
+            value = parts[1].strip()
+
+            if value.isdigit():
+                value = int(value)
+
+            shadow_variables[var_name] = value
+
+            shadow_count += 1
+      
 
         # -------------------
         # ask
@@ -178,6 +215,8 @@ def run(code):
         # -------------------
         elif line.startswith("brew"):
             func_name = line.replace("brew", "").strip()
+            last_scope = current_scope
+            current_scope = func_name
 
             function_lines = []
 
@@ -193,6 +232,9 @@ def run(code):
                 i += 1
 
             functions[func_name] = function_lines
+
+            last_scope = func_name
+            current_scope = "main"
 
 
         # -------------------
@@ -297,7 +339,30 @@ def run(code):
 
             else:
                 print("Chaya Reflection Error:")
-                print("Variable not found")        
+                print("Variable not found")  
+
+
+        # -------------------
+        # echo
+        # -------------------
+
+        elif line == "echo":
+
+            print("Chaya Echo")
+            print("last_scope =", last_scope)        
+
+
+        # -------------------
+        # presence
+        # -------------------
+
+        elif line == "presence":
+
+            print("Chaya Presence")
+            print("scope =", current_scope)
+            print("variables =", len(variables))
+            print("shadow =", shadow_count)
+            print("functions =", len(functions))      
 
 
         
@@ -401,8 +466,12 @@ def run(code):
 
 
                 # Variable
+                elif text in shadow_variables:
+                    print(shadow_variables[text])
+
                 elif text in variables:
                     print(variables[text])
+
 
                 # Plain Text
                 else:

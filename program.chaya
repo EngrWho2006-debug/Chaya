@@ -1,5 +1,3 @@
-keep name as Pragya
-keep age as 20
-
-reflect name
-reflect age
+keep fruits as [Apple, Mango]
+add Banana to fruits
+size fruits
