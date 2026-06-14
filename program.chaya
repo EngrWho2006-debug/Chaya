@@ -1,3 +1,1 @@
-keep fruits as [Apple, Mango]
-add Banana to fruits
-size fruits
+help reflect

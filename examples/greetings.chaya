@@ -1,0 +1,3 @@
+brew greet
+    say "Welcome to Chaya v1.5"
+done    

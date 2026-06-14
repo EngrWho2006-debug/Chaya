@@ -26,6 +26,32 @@ def run(code):
             i += 1
             continue
 
+
+        # -------------------
+        # import
+        # -------------------
+
+        if line.startswith("import"):
+
+            filename = line.replace("import", "").strip()
+
+            try:
+
+                with open(filename, "r") as file:
+
+                    imported_code = file.read()
+
+                for imported_line in imported_code.split("\n"):
+                    lines.insert(i + 1, imported_line)
+
+            except FileNotFoundError:
+
+                print("Chaya Import Error:")
+                print("File not found:", filename)    
+
+
+
+
         # -------------------
         # keep
         # -------------------
@@ -365,7 +391,38 @@ def run(code):
             print("functions =", len(functions))      
 
 
-        
+        # -------------------
+        # help
+        # -------------------
+
+        elif line.startswith("help"):
+
+            command = line.replace("help", "").strip()
+
+            help_text = {
+                "keep": "store values",
+                "say": "print values",
+                "ask": "take input",
+                "reflect": "inspect variable details",
+                "presence": "show current state",
+                "echo": "show previous scope",
+                "brew": "create function",
+                "serve": "run function",
+                "import": "load another .chaya file"
+            }
+
+            if command in help_text:
+                print(help_text[command])
+
+            else:
+                print("Chaya Help Error:")
+                print("Command not found")
+
+
+
+
+
+
         # -------------------
         # say
         # -------------------
