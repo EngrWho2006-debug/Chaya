@@ -4,7 +4,8 @@ Chaya is a beginner-friendly programming language built using Python.
 
 It is designed to make programming easier to read and learn through simple syntax and tea-inspired commands.
 
-Current Version: v1.3
+Current Version: v1.4
+Status: Stable
 
 ---
 
