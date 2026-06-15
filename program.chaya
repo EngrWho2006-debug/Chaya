@@ -1,1 +1,11 @@
 help reflect
+
+shadow temp as 100
+
+presence
+
+echo
+
+import examples/greetings.chaya as greet
+
+serve greet

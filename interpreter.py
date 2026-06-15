@@ -6,6 +6,7 @@ def run(code):
     shadow_variables = {}
     shadow_count = 0
     functions = {}
+    imports = {}
 
     current_scope = "main"
     last_scope = "main"
@@ -33,7 +34,20 @@ def run(code):
 
         if line.startswith("import"):
 
-            filename = line.replace("import", "").strip()
+            statement = line.replace("import", "").strip()
+
+            alias = None
+
+            if " as " in statement:
+
+                filename, alias = statement.split(" as ")
+
+                filename = filename.strip()
+                alias = alias.strip()
+
+            else:
+
+                filename = statement.strip()
 
             try:
 
@@ -41,14 +55,16 @@ def run(code):
 
                     imported_code = file.read()
 
+                if alias:
+                    imports[alias] = filename
+
                 for imported_line in imported_code.split("\n"):
                     lines.insert(i + 1, imported_line)
 
             except FileNotFoundError:
 
                 print("Chaya Import Error:")
-                print("File not found:", filename)    
-
+                print("File not found:", filename)
 
 
 
@@ -500,7 +516,9 @@ def run(code):
                     right = variables.get(right.strip(), right.strip())
 
                     if int(right) == 0:
-                        print("Chaya Error: Division by zero")
+                        print("Chaya Error")
+                        print("line =", i + 1)
+                        print("message = Division by zero")
                     else:
                         print(int(left) / int(right))
 
@@ -536,6 +554,8 @@ def run(code):
             
 
             except Exception as e:
-                print("Chaya Error:", e)
+                print("Chaya Error")
+                print("line =", i + 1)
+                print("message =", e)
 
         i += 1
