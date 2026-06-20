@@ -1,0 +1,19 @@
+brew startup
+
+    say "Chaya Core Loaded"
+
+done
+
+
+brew identity
+
+    say "Code that reflects"
+
+done
+
+
+brew status
+
+    presence
+
+done

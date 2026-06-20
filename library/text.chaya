@@ -1,0 +1,8 @@
+brew welcome
+    say "Welcome to Chaya"
+done
+
+brew night
+    say "Shadow - Presence - Reflection - Night"
+
+done

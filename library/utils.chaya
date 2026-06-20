@@ -1,0 +1,7 @@
+brew info
+    presence
+done
+
+brew hello
+    say "Utilities loaded"
+done

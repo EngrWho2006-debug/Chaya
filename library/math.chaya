@@ -1,0 +1,7 @@
+brew square
+    say 5*5
+done
+
+brew cube
+    say 5*5*5
+done

@@ -4,22 +4,46 @@ Chaya is a beginner-friendly programming language built using Python.
 
 It is designed to make programming easier to read and learn through simple syntax and tea-inspired commands.
 
-Current Version: v1.4
+Current Version: v1.5 
 Status: Stable
 
 ---
 
-Features
+Features:
 
-Variables
+. Variables
 
-Store values using "keep"
+. Functions
+
+. Imports
+
+. Reflection
+
+. Presence
+
+. Shadow Variables
 
 Example:
 
 keep age as 18
 
 say age
+
+---
+
+How to Run:
+
+1. Open terminal
+
+2. Run:
+   python main.py
+
+3. Execute:
+   program.chaya
+
+Example:
+
+say "Welcome to Chaya"
 
 ---
 
@@ -227,6 +251,7 @@ MIT License
 ---
 
 Created by Pragya Singh
+
 =======
 Author
 

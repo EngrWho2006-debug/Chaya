@@ -1,4 +1,3 @@
-
 def run(code):
     variables = {}
     shadow_variables = {}
