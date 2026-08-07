@@ -1,1 +1,34 @@
-version
+keep age as 21
+keep marks as 87
+keep attendance as 92
+keep active as true
+keep name as "Pragya"
+
+say "===== CHAYA v1.6 TEST ====="
+
+if age >= 18 and marks >= 80
+    say "Eligible"
+
+    if active == true
+        say "Account Active"
+    else
+        say "Account Inactive"
+    done
+
+    if marks >= 90 or attendance >= 90
+        say "Excellent Performance"
+    else
+        say "Good Performance"
+    done
+
+    if name == "Pragya"
+        say "Identity Verified"
+    else
+        say "Identity Failed"
+    done
+
+else
+    say "Not Eligible"
+done
+
+say "===== v1.6 TEST COMPLETE ====="
