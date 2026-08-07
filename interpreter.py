@@ -1,3 +1,530 @@
+import os
+from executor import execute_command
+
+
+def runtime_error(line_no, message):
+    print("Chaya Runtime Error")
+    print("Line:", line_no)
+    print("Message:", message)
+
+
+def _value(value, variables):
+    """Convert a Chaya condition value into a Python value."""
+    value = value.strip()
+
+    if value.lower() == "true":
+        return True
+    if value.lower() == "false":
+        return False
+
+    if value.startswith('"') and value.endswith('"'):
+        return value[1:-1]
+
+    if value.startswith("'") and value.endswith("'"):
+        return value[1:-1]
+
+    if value in variables:
+        return variables[value]
+
+    try:
+        return int(value)
+    except ValueError:
+        pass
+
+    try:
+        return float(value)
+    except ValueError:
+        return value
+
+
+def evaluate_condition(condition, variables):
+    """Evaluate one or more Chaya conditions."""
+    condition = condition.strip()
+
+    # OR has lower priority than AND.
+    if " or " in condition:
+        return any(
+            evaluate_condition(part, variables)
+            for part in condition.split(" or ")
+        )
+
+    if " and " in condition:
+        return all(
+            evaluate_condition(part, variables)
+            for part in condition.split(" and ")
+        )
+
+    if condition.startswith("not "):
+        return not bool(
+            _value(condition[4:].strip(), variables)
+        )
+
+    operators = [">=", "<=", "==", "!=", ">", "<"]
+
+    for operator in operators:
+        if operator in condition:
+            left, right = condition.split(operator, 1)
+
+            left = _value(left, variables)
+            right = _value(right, variables)
+
+            try:
+                if operator == ">=":
+                    return left >= right
+                if operator == "<=":
+                    return left <= right
+                if operator == "==":
+                    return left == right
+                if operator == "!=":
+                    return left != right
+                if operator == ">":
+                    return left > right
+                if operator == "<":
+                    return left < right
+            except TypeError:
+                return False
+
+    return bool(_value(condition, variables))
+
+
+def find_block_end(lines, start, end_token="done"):
+    """Find the matching done for a block, including nested blocks."""
+    depth = 1
+    index = start
+
+    while index < len(lines):
+        current = lines[index].strip()
+
+        if current.startswith(("if ", "while ", "for ", "repeat ", "brew ")):
+            depth += 1
+
+        elif current == end_token:
+            depth -= 1
+
+            if depth == 0:
+                return index
+
+        index += 1
+
+    return None
+
+
+def find_if_parts(lines, start):
+    """
+    start = first line inside an IF.
+    Returns (else_index, done_index).
+    Nested IFs are ignored while looking for the outer ELSE.
+    """
+    depth = 1
+    index = start
+    else_index = None
+
+    while index < len(lines):
+        current = lines[index].strip()
+
+        if current.startswith("if "):
+            depth += 1
+
+        elif current == "done":
+            depth -= 1
+
+            if depth == 0:
+                return else_index, index
+
+        elif current == "else" and depth == 1:
+            else_index = index
+
+        index += 1
+
+    return None, None
+
+
+def execute_keep(line, variables, line_no):
+    parts = line.split(" as ", 1)
+
+    if len(parts) != 2:
+        runtime_error(line_no, "Invalid keep syntax")
+        return
+
+    name = parts[0].replace("keep", "", 1).strip()
+    raw = parts[1].strip()
+
+    # List
+    if raw.startswith("[") and raw.endswith("]"):
+        inside = raw[1:-1].strip()
+
+        if inside == "":
+            value = []
+        else:
+            value = [
+                _value(item.strip(), variables)
+                for item in inside.split(",")
+            ]
+
+    # Boolean
+    elif raw.lower() == "true":
+        value = True
+
+    elif raw.lower() == "false":
+        value = False
+
+    # String
+    elif (
+        raw.startswith('"') and raw.endswith('"')
+    ) or (
+        raw.startswith("'") and raw.endswith("'")
+    ):
+        value = raw[1:-1]
+
+    # Existing variable
+    elif raw in variables:
+        value = variables[raw]
+
+    # Integer
+    else:
+        try:
+            value = int(raw)
+
+        # Float
+        except ValueError:
+            try:
+                value = float(raw)
+
+            # Arithmetic expression
+            except ValueError:
+                try:
+                    expression = raw
+
+                    for name2, value2 in sorted(
+                        variables.items(),
+                        key=lambda item: len(item[0]),
+                        reverse=True
+                    ):
+                        if isinstance(value2, (int, float)):
+                            expression = expression.replace(
+                                name2,
+                                str(value2)
+                            )
+
+                    value = eval(
+                        expression,
+                        {"__builtins__": {}},
+                        {}
+                    )
+
+                except Exception:
+                    value = raw
+
+    variables[name] = value
+    
+
+def execute_import(line, lines, index, imports, line_no):
+    statement = line[len("import "):].strip()
+
+    if " as " in statement:
+        filename, alias = statement.split(" as ", 1)
+        filename = filename.strip()
+        alias = alias.strip()
+    else:
+        filename = statement
+        alias = None
+
+    try:
+        with open(filename, "r", encoding="utf-8") as file:
+            imported_code = file.read()
+
+        imports[alias or filename] = filename
+
+        imported_lines = imported_code.splitlines()
+
+        for imported_line in reversed(imported_lines):
+            lines.insert(index + 1, imported_line)
+
+        return True
+
+    except FileNotFoundError:
+        print("Chaya Import Error:")
+        print("File not found:", filename)
+        return True
+
+    except Exception as exc:
+        print("Chaya Import Error:")
+        print(exc)
+        return True
+
+
+def execute_command_line(
+    line,
+    variables,
+    shadow_variables,
+    shadow_count,
+    functions,
+    imports,
+    current_scope,
+    last_scope,
+    line_no,
+):
+    """
+    Execute one non-block command.
+    Returns updated (shadow_count, current_scope, last_scope).
+    """
+    if line.startswith("keep "):
+        execute_keep(line, variables, line_no)
+        return shadow_count, current_scope, last_scope
+
+    if line.startswith("shadow "):
+        parts = line.split(" as ", 1)
+
+        if len(parts) != 2:
+            runtime_error(line_no, "Invalid shadow syntax")
+            return shadow_count, current_scope, last_scope
+
+        name = parts[0].replace("shadow", "", 1).strip()
+        value = _value(parts[1], variables)
+
+        shadow_variables[name] = value
+        shadow_count += 1
+
+        return shadow_count, current_scope, last_scope
+
+    if line.startswith("ask ") or line.startswith("input "):
+        if line.startswith("ask "):
+            name = line[4:].strip()
+        else:
+            name = line[6:].strip()
+
+        user_input = input("> ")
+
+        if user_input.lower() == "true":
+            user_input = True
+        elif user_input.lower() == "false":
+            user_input = False
+        else:
+            try:
+                user_input = int(user_input)
+            except ValueError:
+                pass
+
+        variables[name] = user_input
+        return shadow_count, current_scope, last_scope
+
+    if line.startswith("delete "):
+        name = line[7:].strip()
+
+        if name in variables:
+            del variables[name]
+            print("Deleted:", name)
+        else:
+            runtime_error(line_no, "Variable not found")
+
+        return shadow_count, current_scope, last_scope
+
+    if line.startswith("exists "):
+        name = line[7:].strip()
+        print(name in variables)
+        return shadow_count, current_scope, last_scope
+
+    if line.startswith("type "):
+        name = line[5:].strip()
+
+        if name in variables:
+            print(type(variables[name]).__name__)
+        elif name in shadow_variables:
+            print(type(shadow_variables[name]).__name__)
+        else:
+            runtime_error(line_no, "Variable not found")
+
+        return shadow_count, current_scope, last_scope
+
+    if line.startswith("length "):
+        name = line[7:].strip()
+
+        if name not in variables:
+            runtime_error(line_no, "Variable not found")
+        else:
+            value = variables[name]
+
+            if isinstance(value, (str, list)):
+                print(len(value))
+            else:
+                print("Chaya Length Error:")
+                print("Variable has no length")
+
+        return shadow_count, current_scope, last_scope
+
+    if line.startswith("add ") and " to " in line:
+        item, list_name = line[4:].split(" to ", 1)
+        list_name = list_name.strip()
+        item = _value(item.strip(), variables)
+
+        if list_name in variables and isinstance(variables[list_name], list):
+            variables[list_name].append(item)
+
+        return shadow_count, current_scope, last_scope
+
+    if line.startswith("remove ") and " from " in line:
+        item, list_name = line[7:].split(" from ", 1)
+        list_name = list_name.strip()
+        item = _value(item.strip(), variables)
+
+        if list_name in variables and isinstance(variables[list_name], list):
+            if item in variables[list_name]:
+                variables[list_name].remove(item)
+
+        return shadow_count, current_scope, last_scope
+
+    if line.startswith("size "):
+        name = line[5:].strip()
+
+        if name in variables and isinstance(variables[name], list):
+            print(len(variables[name]))
+        else:
+            runtime_error(line_no, "List not found")
+
+        return shadow_count, current_scope, last_scope
+
+    if line.startswith("reflect "):
+        name = line[8:].strip()
+
+        if name in variables:
+            value = variables[name]
+            print("Reflection")
+            print("name =", name)
+            print("value =", value)
+            print("type =", type(value).__name__)
+        else:
+            runtime_error(line_no, "Variable not found")
+
+        return shadow_count, current_scope, last_scope
+
+    if line == "show":
+        print("Variables")
+
+        if not variables:
+            print("No variables")
+        else:
+            for name, value in variables.items():
+                print(name, "=", value)
+
+        return shadow_count, current_scope, last_scope
+
+    if line.startswith("write "):
+        try:
+            statement = line[6:].strip()
+
+            if " to " not in statement:
+                print("Chaya Write Error:")
+                print("Invalid syntax")
+                return shadow_count, current_scope, last_scope
+
+            text, filename = statement.split(" to ", 1)
+            text = text.strip()
+            filename = filename.strip()
+
+            text = _value(text, variables)
+
+            with open(filename, "w", encoding="utf-8") as file:
+                file.write(str(text))
+
+            print("Written to", filename)
+
+        except Exception as exc:
+            print("Chaya Write Error:")
+            print(exc)
+
+        return shadow_count, current_scope, last_scope
+
+    if line.startswith("read "):
+        filename = line[5:].strip()
+
+        try:
+            with open(filename, "r", encoding="utf-8") as file:
+                print(file.read())
+        except FileNotFoundError:
+            print("Chaya Read Error:")
+            print("File not found")
+        except Exception as exc:
+            print("Chaya Read Error:")
+            print(exc)
+
+        return shadow_count, current_scope, last_scope
+
+    if line == "echo":
+        print("Chaya Echo")
+        print("last_scope =", last_scope)
+        return shadow_count, current_scope, last_scope
+
+    if line == "presence":
+        print("Chaya Presence")
+        print("scope =", current_scope)
+        print("variables =", len(variables))
+        print("shadow =", shadow_count)
+        print("functions =", len(functions))
+        return shadow_count, current_scope, last_scope
+
+    if line == "version":
+        print("Chaya v1.6")
+        return shadow_count, current_scope, last_scope
+
+    if line == "about":
+        print("Chaya Programming Language")
+        print("Shadow • Presence • Reflection • Night")
+        print("Version v1.6")
+        return shadow_count, current_scope, last_scope
+
+    if line == "clear":
+        os.system("cls" if os.name == "nt" else "clear")
+        return shadow_count, current_scope, last_scope
+
+    if line == "imports":
+        print("Loaded Imports")
+
+        if not imports:
+            print("No imports loaded")
+        else:
+            for file in imports.values():
+                print(file)
+
+        return shadow_count, current_scope, last_scope
+
+    if line.startswith("help"):
+        command = line[4:].strip()
+
+        help_text = {
+            "keep": "store values",
+            "say": "print values",
+            "ask": "take input",
+            "reflect": "inspect variable details",
+            "presence": "show current state",
+            "echo": "show previous scope",
+            "brew": "create function",
+            "serve": "run function",
+            "import": "load another .chaya file",
+            "write": "write data to a file",
+            "read": "read a file",
+        }
+
+        if command in help_text:
+            print(help_text[command])
+        else:
+            runtime_error(line_no, "Command not found")
+
+        return shadow_count, current_scope, last_scope
+
+    # Everything else goes through executor.py.
+    try:
+        execute_command(
+            line,
+            variables,
+            shadow_variables,
+            functions,
+            imports
+        )
+    except Exception as exc:
+        runtime_error(line_no, str(exc))
+
+    return shadow_count, current_scope, last_scope
+
 
 def run(code):
     variables = {}
@@ -9,569 +536,241 @@ def run(code):
     current_scope = "main"
     last_scope = "main"
 
+    lines = code.splitlines()
 
-    lines = code.split("\n")
-    i = 0
+    def execute_range(start, end, lines):
+        nonlocal shadow_count, current_scope, last_scope
 
-    while i < len(lines):
-        line = lines[i].strip()
+        i = start
 
-        if line == "":
-            i += 1
-            continue
+        while i < end:
+            line = lines[i].strip()
 
-        # Comments
-        if line.startswith("#"):
-            i += 1
-            continue
-
-
-        # -------------------
-        # import
-        # -------------------
-
-        if line.startswith("import"):
-
-            statement = line.replace("import", "").strip()
-
-            alias = None
-
-            if " as " in statement:
-
-                filename, alias = statement.split(" as ")
-
-                filename = filename.strip()
-                alias = alias.strip()
-
-            else:
-
-                filename = statement.strip()
-
-            try:
-
-                with open(filename, "r") as file:
-
-                    imported_code = file.read()
-
-                if alias:
-                    imports[alias] = filename
-
-                for imported_line in imported_code.split("\n"):
-                    lines.insert(i + 1, imported_line)
-
-                i += 1
-                continue
-            
-            except FileNotFoundError:
-
-                print("Chaya Import Error:")
-                print("File not found:", filename)
-
-
-
-        # -------------------
-        # keep
-        # -------------------
-        if line.startswith("keep"):
-            parts = line.split(" as ")
-
-            if len(parts) != 2:
-                print("Chaya Error: Invalid keep syntax")
+            if not line or line.startswith("#"):
                 i += 1
                 continue
 
-            var_name = parts[0].replace("keep", "").strip()
-            value = parts[1].strip()
-
-            if value.startswith("[") and value.endswith("]"):
-                items = value[1:-1].split(",")
-
-                value = []
-
-                for item in items:
-                    value.append(item.strip())
-
-            elif value.isdigit():
-                value = int(value)
-
-            else:
-                value = str(value)
-
-            variables[var_name] = value
-
-
-        # -------------------
-        # shadow
-        # -------------------
-
-        elif line.startswith("shadow"):
-
-            parts = line.split(" as ")
-
-            if len(parts) != 2:
-                print("Chaya Reflection Error:")
-                print("Invalid shadow syntax")
-
+            # -------------------
+            # import
+            # -------------------
+            if line.startswith("import "):
+                execute_import(
+                    line,
+                    lines,
+                    i,
+                    imports,
+                    i + 1
+                )
                 i += 1
                 continue
 
-            var_name = parts[0].replace("shadow", "").strip()
-
-            value = parts[1].strip()
-
-            if value.isdigit():
-                value = int(value)
-
-            shadow_variables[var_name] = value
-
-            shadow_count += 1
-      
-
-        # -------------------
-        # ask
-        # -------------------
-        elif line.startswith("ask"):
-            var_name = line[4:].strip()
-
-            user_input = input("> ")
-
-            if user_input.isdigit():
-                user_input = int(user_input)
-
-            variables[var_name] = user_input
-
-        # -------------------
-        # if else done
-        # -------------------
-        elif line.startswith("if"):
-            condition = line[3:].strip()
-
-            result = False
-
-            if ">=" in condition:
-                left, right = condition.split(">=")
-                result = variables[left.strip()] >= int(right.strip())
-
-            elif "<=" in condition:
-                left, right = condition.split("<=")
-                result = variables[left.strip()] <= int(right.strip())
-
-            elif "==" in condition:
-                left, right = condition.split("==")
-                result = variables[left.strip()] == int(right.strip())
-
-            elif "!=" in condition:
-                left, right = condition.split("!=")
-                result = variables[left.strip()] != int(right.strip())
-
-            elif ">" in condition:
-                left, right = condition.split(">")
-                result = variables[left.strip()] > int(right.strip())
-
-            elif "<" in condition:
-                left, right = condition.split("<")
-                result = variables[left.strip()] < int(right.strip())
-
-            if result:
-                i += 1
-
-                while i < len(lines):
-                    current = lines[i].strip()
-
-                    if current == "else":
-                        while i < len(lines):
-                            if lines[i].strip() == "done":
-                                break
-                            i += 1
-                        break
-
-                    elif current == "done":
-                        break
-
-                    elif current.startswith("say"):
-                        text = current[4:].strip()
-
-                        if text in variables:
-                            print(variables[text])
-                        else:
-                            print(text)
-
-                    i += 1
-
-            else:
-                while i < len(lines):
-                    current = lines[i].strip()
-
-                    if current == "else":
-                        i += 1
-
-                        while i < len(lines):
-                            current = lines[i].strip()
-
-                            if current == "done":
-                                break
-
-                            elif current.startswith("say"):
-                                text = current[4:].strip()
-
-                                if text in variables:
-                                    print(variables[text])
-                                else:
-                                    print(text)
-
-                            i += 1
-
-                        break
-
-                    elif current == "done":
-                        break
-
-                    i += 1
-
-
-        # -------------------
-        # repeat
-        # -------------------
-        elif line.startswith("repeat"):
-            count = int(line.replace("repeat", "").strip())
-
-            loop_lines = []
-
-            i += 1
-
-            while i < len(lines) and lines[i].strip() != "done":
-                loop_lines.append(lines[i].strip())
-                i += 1
-
-            for _ in range(count):
-                for loop_line in loop_lines:
-                    if loop_line.startswith("say"):
-                        text = loop_line[4:].strip()
-
-                        if text in variables:
-                            print(variables[text])
-                        else:
-                            print(text)
-
-        # -------------------
-        # brew
-        # -------------------
-        elif line.startswith("brew"):
-            func_name = line.replace("brew", "").strip()
-            last_scope = current_scope
-            current_scope = func_name
-
-            function_lines = []
-
-            i += 1
-
-            while i < len(lines):
-                current = lines[i].strip()
-
-                if current == "done":
-                    break
-
-                function_lines.append(current)
-                i += 1
-
-            functions[func_name] = function_lines
-
-            last_scope = func_name
-            current_scope = "main"
-
-
-        # -------------------
-        # serve
-        # ------------------- 
-
-        elif line.startswith("serve"):
-            func_name = line.replace("serve", "").strip()
-
-            if func_name in functions:
-
-                for func_line in functions[func_name]:
-
-                    if func_line.startswith("say"):
-                        text = func_line[4:].strip()
-
-                        if "+" in text:
-                            left, right = text.split("+", 1)
-
-                            left = left.strip()
-                            right = right.strip()
-
-                            if left.startswith('"') and left.endswith('"'):
-                                left = left[1:-1]
-                            elif left in variables:
-                                left = variables[left]
-
-                            if right.startswith('"') and right.endswith('"'):
-                                right = right[1:-1]
-                            elif right in variables:
-                                right = variables[right]
-
-                            print(str(left) + str(right))
-
-                        elif text.startswith('"') and text.endswith('"'):
-                            print(text[1:-1])
-
-                        elif text in variables:
-                            print(variables[text])
-
-                        else:
-                            print(text)
-
-
-        # -------------------
-        # add
-        # -------------------
-        
-        elif line.startswith("add"):
-
-            parts = line.split(" to ")
-
-            item = parts[0].replace("add", "").strip()
-            list_name = parts[1].strip()
-
-            if list_name in variables:
-                variables[list_name].append(item) 
-
-        # -------------------
-        # remove
-        # -------------------
-
-        elif line.startswith("remove"):
-
-            parts = line.split(" from ")
-
-            item = parts[0].replace("remove", "").strip()
-            list_name = parts[1].strip()
-
-            if list_name in variables:
-                if item in variables[list_name]:
-                    variables[list_name].remove(item)
-
-
-        # -------------------
-        # size
-        # -------------------
-
-        elif line.startswith("size"):
-            list_name = line.replace("size", "").strip()
-
-            if list_name in variables:
-                print(len(variables[list_name]))
-
-
-        # -------------------
-        # reflect
-        # -------------------
-
-        elif line.startswith("reflect"):
-
-            var_name = line.replace("reflect", "").strip()
-
-            if var_name in variables:
-
-                value = variables[var_name]
-
-                print("Reflection")
-                print("name =", var_name)
-                print("value =", value)
-                print("type =", type(value).__name__)
-
-            else:
-                print("Chaya Reflection Error:")
-                print("Variable not found")  
-
-
-        # -------------------
-        # echo
-        # -------------------
-
-        elif line == "echo":
-
-            print("Chaya Echo")
-            print("last_scope =", last_scope)        
-
-
-        # -------------------
-        # presence
-        # -------------------
-
-        elif line == "presence":
-
-            print("Chaya Presence")
-            print("scope =", current_scope)
-            print("variables =", len(variables))
-            print("shadow =", shadow_count)
-            print("functions =", len(functions))      
-
-
-        # -------------------
-        # help
-        # -------------------
-
-        elif line.startswith("help"):
-
-            command = line.replace("help", "").strip()
-
-            help_text = {
-                "keep": "store values",
-                "say": "print values",
-                "ask": "take input",
-                "reflect": "inspect variable details",
-                "presence": "show current state",
-                "echo": "show previous scope",
-                "brew": "create function",
-                "serve": "run function",
-                "import": "load another .chaya file"
-            }
-
-            if command in help_text:
-                print(help_text[command])
-
-            else:
-                print("Chaya Help Error:")
-                print("Command not found")
-
-
-
-
-
-
-        # -------------------
-        # say
-        # -------------------
-        elif line.startswith("say"):
-            text = line[4:].strip()
-
-            try:
-
-                # Power
-                if "**" in text:
-                    left, right = text.split("**")
-
-                    left = variables.get(left.strip(), left.strip())
-                    right = variables.get(right.strip(), right.strip())
-
-                    print(int(left) ** int(right))
-
-                # Modulus
-                elif "%" in text:
-                    left, right = text.split("%")
-
-                    left = variables.get(left.strip(), left.strip())
-                    right = variables.get(right.strip(), right.strip())
-
-                    print(int(left) % int(right))
-
-                # Addition
-                elif "+" in text:
-                    left, right = text.split("+", 1)
-
-                    left = left.strip()
-                    right = right.strip()
-
-                    # Remove quotes if present
-                    if left.startswith('"') and left.endswith('"'):
-                        left = left[1:-1]
-                    elif left in variables:
-                        left = variables[left]
-
-                    if right.startswith('"') and right.endswith('"'):
-                        right = right[1:-1]
-                    elif right in variables:
-                        right = variables[right]
-
-                    # String concatenation if either side is text
-                    if isinstance(left, str) or isinstance(right, str):
-                        print(str(left) + str(right))
-                    else:
-                        print(int(left) + int(right))
-
-
-                # String Literal
-                elif text.startswith('"') and text.endswith('"'):
-                    print(text[1:-1])
-
-
-
-                # Subtraction
-                elif "-" in text:
-                    left, right = text.split("-")
-
-                    left = variables.get(left.strip(), left.strip())
-                    right = variables.get(right.strip(), right.strip())
-
-                    print(int(left) - int(right))
-
-                
-                # Multiplication
-                elif "*" in text:
-
-                    parts = text.split("*")
-
-                    result = 1
-
-                    for value in parts:
-
-                        value = value.strip()
-
-                        if value in variables:
-                            value = variables[value]
-
-                        result *= int(value)
-
-                    print(result)
-
-
-                # Division
-                elif "/" in text:
-                    left, right = text.split("/")
-
-                    left = variables.get(left.strip(), left.strip())
-                    right = variables.get(right.strip(), right.strip())
-
-                    if int(right) == 0:
-                        print("Chaya Error")
-                        print("line =", i + 1)
-                        print("message = Division by zero")
-                    else:
-                        print(int(left) / int(right))
-
-            
-
-                # List Indexing
-                elif "[" in text and "]" in text:
-
-                    list_name = text.split("[")[0].strip()
-
-                    index = int(
-                        text.split("[")[1]
-                        .replace("]", "")
+            # -------------------
+            # if / else / done
+            # -------------------
+            if line.startswith("if "):
+                else_index, done_index = find_if_parts(lines, i + 1)
+
+                if done_index is None or done_index >= end:
+                    runtime_error(i + 1, "Missing done for if block")
+                    return
+
+                condition = line[3:].strip()
+                result = evaluate_condition(condition, variables)
+
+                if result:
+                    block_end = (
+                        else_index
+                        if else_index is not None
+                        else done_index
                     )
+                    execute_range(i + 1, block_end, lines)
 
-                    if list_name in variables:
-                        print(variables[list_name][index])
+                elif else_index is not None:
+                    execute_range(else_index + 1, done_index, lines)
 
+                i = done_index + 1
+                continue
 
-                # Variable
-                elif text in shadow_variables:
-                    print(shadow_variables[text])
+            # -------------------
+            # while
+            # -------------------
+            if line.startswith("while "):
+                done_index = find_block_end(lines, i + 1)
 
-                elif text in variables:
-                    print(variables[text])
+                if done_index is None or done_index >= end:
+                    runtime_error(i + 1, "Missing done for while loop")
+                    return
 
+                condition = line[6:].strip()
 
-                # Plain Text
+                while evaluate_condition(condition, variables):
+                    execute_range(i + 1, done_index, lines)
+
+                i = done_index + 1
+                continue
+
+            # -------------------
+            # for
+            # -------------------
+            if line.startswith("for "):
+                done_index = find_block_end(lines, i + 1)
+
+                if done_index is None or done_index >= end:
+                    runtime_error(i + 1, "Missing done for for loop")
+                    return
+
+                statement = line[4:].strip()
+
+                try:
+                    var_name, remaining = statement.split(" from ", 1)
+                    start_value, end_value = remaining.split(" to ", 1)
+
+                    var_name = var_name.strip()
+                    start_value = int(start_value.strip())
+                    end_value = int(end_value.strip())
+
+                    for value in range(start_value, end_value + 1):
+                        variables[var_name] = value
+                        execute_range(i + 1, done_index, lines)
+
+                except Exception as exc:
+                    print("Chaya For Error:")
+                    print(exc)
+
+                i = done_index + 1
+                continue
+
+            # -------------------
+            # repeat
+            # -------------------
+            if line.startswith("repeat "):
+                done_index = find_block_end(lines, i + 1)
+
+                if done_index is None or done_index >= end:
+                    runtime_error(i + 1, "Missing done for repeat")
+                    return
+
+                try:
+                    count = int(line[7:].strip())
+
+                    for _ in range(count):
+                        execute_range(i + 1, done_index, lines)
+
+                except Exception as exc:
+                    print("Chaya Repeat Error:")
+                    print(exc)
+
+                i = done_index + 1
+                continue
+
+            # -------------------
+            # brew
+            # -------------------
+            if line.startswith("brew "):
+                done_index = find_block_end(lines, i + 1)
+
+                if done_index is None or done_index >= end:
+                    runtime_error(i + 1, "Missing done for brew")
+                    return
+
+                func_name = line[5:].strip()
+
+                functions[func_name] = [
+                    item.strip()
+                    for item in lines[i + 1:done_index]
+                    if item.strip()
+                ]
+
+                last_scope = current_scope
+                current_scope = func_name
+                last_scope = func_name
+                current_scope = "main"
+
+                i = done_index + 1
+                continue
+
+            # -------------------
+            # serve
+            # -------------------
+            if line.startswith("serve "):
+                func_name = line[6:].strip()
+
+                if func_name not in functions:
+                    runtime_error(i + 1, "Function not found")
                 else:
-                    print(text)
-            
+                    previous_scope = current_scope
+                    current_scope = func_name
 
-            except Exception as e:
-                print("Chaya Error")
-                print("line =", i + 1)
-                print("message =", e)
+                    function_lines = functions[func_name]
 
-        i += 1
+                    for function_line in function_lines:
+                        stripped = function_line.strip()
+
+                        if not stripped:
+                            continue
+
+                        if stripped.startswith("say "):
+                            execute_command(
+                                stripped,
+                                variables,
+                                shadow_variables,
+                                functions,
+                                imports
+                            )
+                        else:
+                            (
+                                shadow_count,
+                                current_scope,
+                                last_scope
+                            ) = execute_command_line(
+                                stripped,
+                                variables,
+                                shadow_variables,
+                                shadow_count,
+                                functions,
+                                imports,
+                                current_scope,
+                                last_scope,
+                                i + 1,
+                            )
+
+                    last_scope = func_name
+                    current_scope = previous_scope
+
+                i += 1
+                continue
+
+            # -------------------
+            # done / else outside block
+            # -------------------
+            if line in ("done", "else"):
+                runtime_error(
+                    i + 1,
+                    f"Unexpected '{line}'"
+                )
+                i += 1
+                continue
+
+            # -------------------
+            # normal command
+            # -------------------
+            (
+                shadow_count,
+                current_scope,
+                last_scope,
+            ) = execute_command_line(
+                line,
+                variables,
+                shadow_variables,
+                shadow_count,
+                functions,
+                imports,
+                current_scope,
+                last_scope,
+                i + 1,
+            )
+
+            i += 1
+
+    # Start execution
+    execute_range(0, len(lines), lines)
