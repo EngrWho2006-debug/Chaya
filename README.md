@@ -241,23 +241,8 @@ v1.3
 
 - Lists
 
----
-
-<<<<<<< HEAD
-License
-
-MIT License
-
----
-
-Created by Pragya Singh
-
 =======
 Author
 
 Pragya Singh(Engr. Who)
 
----
-
-Created by Pragya Singh
->>>>>>> 4cc89aeebe3a89742a72274c1a562270e905e648
