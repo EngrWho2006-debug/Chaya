@@ -1,4 +1,4 @@
-Chaya 
+## Chaya 
 
 Chaya is a beginner-friendly programming language built using Python.
 
@@ -9,7 +9,7 @@ Status: Stable
 
 ---
 
-Features:
+## Features:
 
 . Variables
 
@@ -31,7 +31,7 @@ say age
 
 ---
 
-How to Run:
+## How to Run:
 
 1. Open terminal
 
@@ -47,7 +47,7 @@ say "Welcome to Chaya"
 
 ---
 
-Output
+## Output
 
 Display text using "say"
 
@@ -57,7 +57,7 @@ say "Hello World"
 
 ---
 
-Input
+## Input
 
 Take user input using "ask"
 
@@ -69,7 +69,7 @@ say name
 
 ---
 
-Conditions
+## Conditions
 
 Supports:
 
@@ -89,7 +89,7 @@ done
 
 ---
 
-Loops
+## Loops
 
 Repeat blocks using "repeat"
 
@@ -101,9 +101,9 @@ done
 
 ---
 
-Functions
+## Functions
 
-Create reusable code using:
+####Create reusable code using:
 
 - brew
 - serve
@@ -118,7 +118,7 @@ serve greet
 
 ---
 
-String Concatenation
+## String Concatenation
 
 Example:
 
@@ -132,7 +132,7 @@ Hello Pragya
 
 ---
 
-Lists
+## Lists
 
 Create:
 
@@ -156,7 +156,7 @@ size fruits
 
 ---
 
-Installation
+## Installation
 
 Clone repository:
 
@@ -172,7 +172,7 @@ python main.py
 
 ---
 
-Folder Structure
+## Folder Structure
 
 Chaya/
 
@@ -192,7 +192,7 @@ Chaya/
 
 ---
 
-Example Program
+## Example Program
 
 keep user as Pragya
 
@@ -204,7 +204,7 @@ done
 
 ---
 
-Roadmap
+## Roadmap
 
 v1.4
 
@@ -222,7 +222,7 @@ v2.0
 
 ---
 
-Version History
+## Version History
 
 v1.0
 
